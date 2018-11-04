@@ -5,8 +5,11 @@ import (
 	"encoding/binary"
 	"fmt"
 	"github.com/perlin-network/life/exec"
+	"io"
 	"math"
+	"os"
 	"reflect"
+	"syscall"
 	"time"
 )
 
@@ -26,7 +29,6 @@ func NewResolver() *Resolver {
 }
 
 func (r *Resolver) ResolveFunc(module, field string) exec.FunctionImport {
-	fmt.Printf("Resolve func: %s %s\n", module, field)
 	switch module {
 	case "go":
 		switch field {
@@ -38,7 +40,7 @@ func (r *Resolver) ResolveFunc(module, field string) exec.FunctionImport {
 				len := binary.LittleEndian.Uint64(vm.Memory[ptr+8:])
 				_, err := rand.Read(vm.Memory[base : base+len])
 				if err != nil {
-					fmt.Printf("[app] called %s %s err %v\n", module, field, err)
+					panic(fmt.Sprintf("runtime.getRandomData: err %v", err))
 				}
 				return 0
 			}
@@ -50,14 +52,36 @@ func (r *Resolver) ResolveFunc(module, field string) exec.FunctionImport {
 				binary.LittleEndian.PutUint64(vm.Memory[ptr:], uint64(nano))
 				return 0
 			}
+		case "runtime.wasmExit":
+			return func(vm *exec.VirtualMachine) int64 {
+				frame := vm.GetCurrentFrame()
+				ptr := int(uint32(frame.Locals[0])) + 8
+				code := binary.LittleEndian.Uint32(vm.Memory[ptr:])
+				os.Exit(int(code))
+				return 0
+			}
 		case "runtime.wasmWrite":
 			return func(vm *exec.VirtualMachine) int64 {
 				frame := vm.GetCurrentFrame()
-				ptr := int(uint32(frame.Locals[0])) + 16
-				base := binary.LittleEndian.Uint64(vm.Memory[ptr:])
-				len := binary.LittleEndian.Uint64(vm.Memory[ptr+8:])
+				ptr := int(uint32(frame.Locals[0])) + 8
+				fd := binary.LittleEndian.Uint64(vm.Memory[ptr:])
+				base := binary.LittleEndian.Uint64(vm.Memory[ptr+8:])
+				len := binary.LittleEndian.Uint64(vm.Memory[ptr+16:])
 
-				fmt.Printf("%s", vm.Memory[base:base+len])
+				var writer io.Writer
+				switch int(fd) {
+				case syscall.Stdout:
+					writer = os.Stdout
+				case syscall.Stderr:
+					writer = os.Stderr
+				default:
+					panic(fmt.Sprintf("runtime.wasmWrite: invalid fd %d", fd))
+				}
+				_, err := io.WriteString(writer, string(vm.Memory[base:base+len]))
+				if err != nil {
+					panic(fmt.Sprintf("runtime.wasmWrite: err %v", err))
+				}
+
 				return 0
 			}
 		case "syscall/js.valueGet":
@@ -128,7 +152,6 @@ func (r *Resolver) ResolveFunc(module, field string) exec.FunctionImport {
 				s := r.loadString(vm, ptr+8)
 				args := r.loadSliceOfValues(vm, ptr+24)
 
-				fmt.Printf("Calling %q on %v with args %v\n", s, v, args)
 				if c, ok := v.v.(caller); ok {
 					r.storeValue(vm, ptr+56, c.Call(s, args...))
 					vm.Memory[ptr+64] = 1
@@ -136,8 +159,6 @@ func (r *Resolver) ResolveFunc(module, field string) exec.FunctionImport {
 					r.storeValue(vm, ptr+56, newJSError(fmt.Sprintf("value %#v is not caller", v)))
 					vm.Memory[ptr+64] = 0
 				}
-				// r.storeValue(vm, ptr+40+len(args)*4, true)
-				// r.storeValue(vm, ptr+48+len(args)*4, len(args))
 				return 0
 			}
 		default:
@@ -221,7 +242,6 @@ func (r *Resolver) storeValue(vm *exec.VirtualMachine, ptr int, v interface{}) {
 		}
 		value := reflect.ValueOf(tv.v)
 		k := value.Kind()
-		fmt.Printf("value type is %#v kind %#v\n", tv, k)
 		switch k {
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 			binary.LittleEndian.PutUint64(vm.Memory[ptr:], uint64(value.Int()))

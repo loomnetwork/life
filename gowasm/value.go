@@ -43,16 +43,35 @@ func predefValue(id uint32, value interface{}) Value {
 	return Value{ref: nanHead<<32 | ref(id), v: value}
 }
 
-func (v *Value) RefUint64() uint64 {
+func (v Value) RefUint64() uint64 {
 	return uint64(v.ref)
 }
 
-func (v *Value) RefLower32Bits() ref {
+func (v Value) RefLower32Bits() ref {
 	return v.ref & 0xffffffff
 }
 
-func (v *Value) String() string {
+func (v Value) IsNaNHead() bool {
+	return v.ref>>32&nanHead == nanHead
+}
+
+func (v Value) String() string {
 	return fmt.Sprintf("{ref:%x, v:%v}", v.ref, v.v)
+}
+
+func (v Value) float() float64 {
+	if !v.isNumber() {
+		panic("Value is not number type")
+	}
+	return v.v.(float64)
+}
+
+func (v Value) Float() float64 {
+	return v.float()
+}
+
+func (v Value) Int() int {
+	return int(v.float())
 }
 
 type Type int
