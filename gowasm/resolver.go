@@ -52,6 +52,16 @@ func (r *Resolver) ResolveFunc(module, field string) exec.FunctionImport {
 				binary.LittleEndian.PutUint64(vm.Memory[ptr:], uint64(nano))
 				return 0
 			}
+		case "runtime.walltime":
+			return func(vm *exec.VirtualMachine) int64 {
+				frame := vm.GetCurrentFrame()
+				ptr := int(uint32(frame.Locals[0])) + 8
+				now := time.Now()
+				sec := now.Unix()
+				binary.LittleEndian.PutUint64(vm.Memory[ptr:], uint64(sec))
+				binary.LittleEndian.PutUint32(vm.Memory[ptr+8:], uint32(now.Nanosecond()))
+				return 0
+			}
 		case "runtime.wasmExit":
 			return func(vm *exec.VirtualMachine) int64 {
 				frame := vm.GetCurrentFrame()
@@ -159,6 +169,14 @@ func (r *Resolver) ResolveFunc(module, field string) exec.FunctionImport {
 					r.storeValue(vm, ptr+56, newJSError(fmt.Sprintf("value %#v is not caller", v)))
 					vm.Memory[ptr+64] = 0
 				}
+				return 0
+			}
+		case "syscall/js.stringVal":
+			return func(vm *exec.VirtualMachine) int64 {
+				frame := vm.GetCurrentFrame()
+				ptr := int(uint32(frame.Locals[0])) + 8
+				s := r.loadString(vm, ptr)
+				r.storeValue(vm, ptr+16, s)
 				return 0
 			}
 		default:
