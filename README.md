@@ -1,6 +1,6 @@
 # Introduction
 
-This is a WebAssembly VM which can run wasm program built by golang.
+Golang WebAssembly VM. WebAssembly program written in golang can be run by this VM.
 
 ## Getting Started
 
