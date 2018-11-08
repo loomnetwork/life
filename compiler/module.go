@@ -48,8 +48,11 @@ func LoadModule(raw []byte) (*Module, error) {
 			r := bytes.NewReader(sec.RawSection.Bytes)
 			for {
 				ty, err := leb128.ReadVarUint32(r)
-				if err != nil || ty != 1 {
+				if err != nil {
 					break
+				}
+				if ty != 1 {
+					continue
 				}
 				payloadLen, err := leb128.ReadVarUint32(r)
 				if err != nil {
