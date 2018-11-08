@@ -8,14 +8,14 @@ import (
 
 type jsInt8Array []int8
 
-func (a jsInt8Array) New(vm *exec.VirtualMachine, args ...interface{}) interface{} {
+func (a jsInt8Array) New(vm *exec.VirtualMachine, args ...Value) interface{} {
 	if len(args) != 3 {
 		panic("jsInt8Array New len(args) != 3")
 	}
 
-	m := args[0].(Value)
-	s := args[1].(Value)
-	n := args[2].(Value)
+	m := args[0]
+	s := args[1]
+	n := args[2]
 
 	if s.IsNaNHead() || n.IsNaNHead() {
 		return make(jsInt8Array, 0)
@@ -34,14 +34,14 @@ func (a jsInt8Array) New(vm *exec.VirtualMachine, args ...interface{}) interface
 
 type jsInt16Array []int16
 
-func (a jsInt16Array) New(vm *exec.VirtualMachine, args ...interface{}) interface{} {
+func (a jsInt16Array) New(vm *exec.VirtualMachine, args ...Value) interface{} {
 	if len(args) != 3 {
 		panic("jsInt16Array New len(args) != 3")
 	}
 
-	m := args[0].(Value)
-	s := args[1].(Value)
-	n := args[2].(Value)
+	m := args[0]
+	s := args[1]
+	n := args[2]
 
 	if s.IsNaNHead() || n.IsNaNHead() {
 		return make(jsInt16Array, 0)
@@ -60,14 +60,14 @@ func (a jsInt16Array) New(vm *exec.VirtualMachine, args ...interface{}) interfac
 
 type jsInt32Array []int32
 
-func (a jsInt32Array) New(vm *exec.VirtualMachine, args ...interface{}) interface{} {
+func (a jsInt32Array) New(vm *exec.VirtualMachine, args ...Value) interface{} {
 	if len(args) != 3 {
 		panic("jsInt32Array New len(args) != 3")
 	}
 
-	m := args[0].(Value)
-	s := args[1].(Value)
-	n := args[2].(Value)
+	m := args[0]
+	s := args[1]
+	n := args[2]
 
 	if s.IsNaNHead() || n.IsNaNHead() {
 		return make(jsInt32Array, 0)
@@ -86,14 +86,14 @@ func (a jsInt32Array) New(vm *exec.VirtualMachine, args ...interface{}) interfac
 
 type jsUint8Array []uint8
 
-func (a jsUint8Array) New(vm *exec.VirtualMachine, args ...interface{}) interface{} {
+func (a jsUint8Array) New(vm *exec.VirtualMachine, args ...Value) interface{} {
 	if len(args) != 3 {
 		panic("jsUint8Array New len(args) != 3")
 	}
 
-	m := args[0].(Value)
-	s := args[1].(Value)
-	n := args[2].(Value)
+	m := args[0]
+	s := args[1]
+	n := args[2]
 
 	if s.IsNaNHead() || n.IsNaNHead() {
 		return make(jsUint8Array, 0)
@@ -109,14 +109,14 @@ func (a jsUint8Array) New(vm *exec.VirtualMachine, args ...interface{}) interfac
 
 type jsUint16Array []uint16
 
-func (a jsUint16Array) New(vm *exec.VirtualMachine, args ...interface{}) interface{} {
+func (a jsUint16Array) New(vm *exec.VirtualMachine, args ...Value) interface{} {
 	if len(args) != 3 {
 		panic("jsUint16Array len(args) != 3")
 	}
 
-	m := args[0].(Value)
-	s := args[1].(Value)
-	n := args[2].(Value)
+	m := args[0]
+	s := args[1]
+	n := args[2]
 
 	if s.IsNaNHead() || n.IsNaNHead() {
 		return make(jsUint16Array, 0)
@@ -135,14 +135,14 @@ func (a jsUint16Array) New(vm *exec.VirtualMachine, args ...interface{}) interfa
 
 type jsUint32Array []uint32
 
-func (a jsUint32Array) New(vm *exec.VirtualMachine, args ...interface{}) interface{} {
+func (a jsUint32Array) New(vm *exec.VirtualMachine, args ...Value) interface{} {
 	if len(args) != 3 {
 		panic("jsUint32Array New len(args) != 3")
 	}
 
-	m := args[0].(Value)
-	s := args[1].(Value)
-	n := args[2].(Value)
+	m := args[0]
+	s := args[1]
+	n := args[2]
 
 	if s.IsNaNHead() || n.IsNaNHead() {
 		return make(jsUint32Array, 0)
@@ -161,14 +161,14 @@ func (a jsUint32Array) New(vm *exec.VirtualMachine, args ...interface{}) interfa
 
 type jsFloat32Array []float32
 
-func (a jsFloat32Array) New(vm *exec.VirtualMachine, args ...interface{}) interface{} {
+func (a jsFloat32Array) New(vm *exec.VirtualMachine, args ...Value) interface{} {
 	if len(args) != 3 {
 		panic("jsFloat32Array New len(args) != 3")
 	}
 
-	m := args[0].(Value)
-	s := args[1].(Value)
-	n := args[2].(Value)
+	m := args[0]
+	s := args[1]
+	n := args[2]
 
 	if s.IsNaNHead() || n.IsNaNHead() {
 		return make(jsFloat32Array, 0)
@@ -187,14 +187,14 @@ func (a jsFloat32Array) New(vm *exec.VirtualMachine, args ...interface{}) interf
 
 type jsFloat64Array []float64
 
-func (a jsFloat64Array) New(vm *exec.VirtualMachine, args ...interface{}) interface{} {
+func (a jsFloat64Array) New(vm *exec.VirtualMachine, args ...Value) interface{} {
 	if len(args) != 3 {
 		panic("jsFloat64Array New len(args) != 3")
 	}
 
-	m := args[0].(Value)
-	s := args[1].(Value)
-	n := args[2].(Value)
+	m := args[0]
+	s := args[1]
+	n := args[2]
 
 	if s.IsNaNHead() || n.IsNaNHead() {
 		return make(jsFloat64Array, 0)
@@ -213,6 +213,10 @@ func (a jsFloat64Array) New(vm *exec.VirtualMachine, args ...interface{}) interf
 
 type jsArray []interface{}
 
-func (a jsArray) New(vm *exec.VirtualMachine, args ...interface{}) interface{} {
-	return jsArray(args)
+func (a jsArray) New(vm *exec.VirtualMachine, args ...Value) interface{} {
+	result := make(jsArray, len(args))
+	for i, value := range args {
+		result[i] = value.v
+	}
+	return result
 }

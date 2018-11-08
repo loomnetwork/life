@@ -10,11 +10,11 @@ type getter interface {
 }
 
 type newer interface {
-	New(vm *exec.VirtualMachine, args ...interface{}) interface{}
+	New(vm *exec.VirtualMachine, args ...Value) interface{}
 }
 
 type caller interface {
-	Call(method string, args ...interface{}) interface{}
+	Call(method string, args ...Value) interface{}
 }
 
 type ref uint64
@@ -56,7 +56,7 @@ func (v Value) IsNaNHead() bool {
 }
 
 func (v Value) String() string {
-	return fmt.Sprintf("{ref:%x, v:%v}", v.ref, v.v)
+	return v.v.(string)
 }
 
 func (v Value) float() float64 {
@@ -72,6 +72,10 @@ func (v Value) Float() float64 {
 
 func (v Value) Int() int {
 	return int(v.float())
+}
+
+func (v Value) Uint32() uint32 {
+	return uint32(v.float())
 }
 
 type Type int

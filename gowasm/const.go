@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"syscall"
 )
 
 const nanHead = 0x7FF80000
@@ -47,6 +48,21 @@ var defaultValues = map[ref]Value{
 	jsGo.RefLower32Bits():           jsGo,
 }
 
+type stat struct {
+	syscall.Stat_t
+	jsObject
+}
+
+func newStat() *stat {
+	s := &stat{}
+	s.jsObject = jsObject{
+		"isDirectory": func(args ...Value) interface{} {
+			return s.Mode&syscall.S_IFMT == syscall.S_IFDIR
+		},
+	}
+	return s
+}
+
 var fs = jsObject{
 	"constants": jsObject{
 		"O_WRONLY": float64(os.O_WRONLY),
@@ -56,15 +72,80 @@ var fs = jsObject{
 		"O_APPEND": float64(os.O_APPEND),
 		"O_EXCL":   float64(os.O_EXCL),
 	},
-	"writeSync": func(args ...interface{}) interface{} {
-		if len(args) < 4 {
-			return nil
+	"openSync": func(args ...Value) interface{} {
+		if len(args) < 3 {
+			return newJSError(fmt.Errorf("fs.openSync: invalid num of args"))
 		}
-		bufValue := args[1].(Value)
-		buf := bufValue.v.(jsUint8Array)
-		// s := args[2]
-		// n := args[3]
-		fmt.Print(string(buf))
+		path := args[0].String()
+		mode := args[1].Int()
+		perm := args[2].Uint32()
+		n, err := syscall.Open(path, mode, perm)
+		if err != nil {
+			return newJSError(err)
+		}
+		return n
+	},
+	"readSync": func(args ...Value) interface{} {
+		if len(args) < 4 {
+			return newJSError(fmt.Errorf("fs.readSync: invalid num of args"))
+		}
+		fd := args[0].Int()
+		buf := args[1].v.(jsUint8Array)
+		s := args[2].Int()
+		n := args[3].Int()
+		n, err := syscall.Read(fd, buf[s:s+n])
+		if err != nil {
+			return newJSError(err)
+		}
+		return n
+	},
+	"statSync": func(args ...Value) interface{} {
+		if len(args) < 1 {
+			return newJSError(fmt.Errorf("fs.statSync: invalid num of args"))
+		}
+		path := args[0].String()
+		stat := newStat()
+		err := syscall.Stat(path, &stat.Stat_t)
+		if err != nil {
+			return newJSError(err)
+		}
+		return stat
+	},
+	"fstatSync": func(args ...Value) interface{} {
+		if len(args) < 1 {
+			return newJSError(fmt.Errorf("fs.fstatSync: invalid num of args"))
+		}
+		fd := args[0].Int()
+		stat := newStat()
+		err := syscall.Fstat(fd, &stat.Stat_t)
+		if err != nil {
+			return newJSError(err)
+		}
+		return stat
+	},
+	"writeSync": func(args ...Value) interface{} {
+		if len(args) < 4 {
+			return newJSError(fmt.Errorf("fs.writeSync: invalid num of args"))
+		}
+		fd := args[0].Int()
+		buf := args[1].v.(jsUint8Array)
+		s := args[2].Int()
+		n := args[3].Int()
+		n, err := syscall.Write(int(fd), buf[s:s+n])
+		if err != nil {
+			return newJSError(err)
+		}
+		return n
+	},
+	"closeSync": func(args ...Value) interface{} {
+		if len(args) < 1 {
+			return newJSError(fmt.Errorf("fs.closeSync: invalid num of args"))
+		}
+		fd := args[0].Int()
+		err := syscall.Close(int(fd))
+		if err != nil {
+			return newJSError(err)
+		}
 		return nil
 	},
 }

@@ -35,7 +35,7 @@ func (r *Resolver) ResolveFunc(module, field string) exec.FunctionImport {
 		case "runtime.getRandomData":
 			return func(vm *exec.VirtualMachine) int64 {
 				frame := vm.GetCurrentFrame()
-				ptr := int(uint32(frame.Locals[0])) + 8
+				ptr := int(frame.Locals[0]) + 8
 				base := binary.LittleEndian.Uint64(vm.Memory[ptr:])
 				len := binary.LittleEndian.Uint64(vm.Memory[ptr+8:])
 				_, err := rand.Read(vm.Memory[base : base+len])
@@ -47,7 +47,7 @@ func (r *Resolver) ResolveFunc(module, field string) exec.FunctionImport {
 		case "runtime.nanotime":
 			return func(vm *exec.VirtualMachine) int64 {
 				frame := vm.GetCurrentFrame()
-				ptr := int(uint32(frame.Locals[0])) + 8
+				ptr := int(frame.Locals[0]) + 8
 				nano := time.Since(r.origin).Nanoseconds()
 				binary.LittleEndian.PutUint64(vm.Memory[ptr:], uint64(nano))
 				return 0
@@ -55,7 +55,7 @@ func (r *Resolver) ResolveFunc(module, field string) exec.FunctionImport {
 		case "runtime.walltime":
 			return func(vm *exec.VirtualMachine) int64 {
 				frame := vm.GetCurrentFrame()
-				ptr := int(uint32(frame.Locals[0])) + 8
+				ptr := int(frame.Locals[0]) + 8
 				now := time.Now()
 				sec := now.Unix()
 				binary.LittleEndian.PutUint64(vm.Memory[ptr:], uint64(sec))
@@ -65,7 +65,7 @@ func (r *Resolver) ResolveFunc(module, field string) exec.FunctionImport {
 		case "runtime.wasmExit":
 			return func(vm *exec.VirtualMachine) int64 {
 				frame := vm.GetCurrentFrame()
-				ptr := int(uint32(frame.Locals[0])) + 8
+				ptr := int(frame.Locals[0]) + 8
 				code := binary.LittleEndian.Uint32(vm.Memory[ptr:])
 				os.Exit(int(code))
 				return 0
@@ -73,7 +73,7 @@ func (r *Resolver) ResolveFunc(module, field string) exec.FunctionImport {
 		case "runtime.wasmWrite":
 			return func(vm *exec.VirtualMachine) int64 {
 				frame := vm.GetCurrentFrame()
-				ptr := int(uint32(frame.Locals[0])) + 8
+				ptr := int(frame.Locals[0]) + 8
 				fd := binary.LittleEndian.Uint64(vm.Memory[ptr:])
 				base := binary.LittleEndian.Uint64(vm.Memory[ptr+8:])
 				len := binary.LittleEndian.Uint64(vm.Memory[ptr+16:])
@@ -97,7 +97,7 @@ func (r *Resolver) ResolveFunc(module, field string) exec.FunctionImport {
 		case "syscall/js.valueGet":
 			return func(vm *exec.VirtualMachine) int64 {
 				frame := vm.GetCurrentFrame()
-				ptr := int(uint32(frame.Locals[0])) + 8
+				ptr := int(frame.Locals[0]) + 8
 				v := r.loadValue(vm, ptr)
 				s := r.loadString(vm, ptr+8)
 				gt, ok := v.v.(getter)
@@ -112,7 +112,7 @@ func (r *Resolver) ResolveFunc(module, field string) exec.FunctionImport {
 		case "syscall/js.valueNew":
 			return func(vm *exec.VirtualMachine) int64 {
 				frame := vm.GetCurrentFrame()
-				ptr := int(uint32(frame.Locals[0])) + 8
+				ptr := int(frame.Locals[0]) + 8
 				v := r.loadValue(vm, ptr)
 				values := r.loadSliceOfValues(vm, ptr+8)
 				n, ok := v.v.(newer)
@@ -129,7 +129,7 @@ func (r *Resolver) ResolveFunc(module, field string) exec.FunctionImport {
 		case "syscall/js.valuePrepareString":
 			return func(vm *exec.VirtualMachine) int64 {
 				frame := vm.GetCurrentFrame()
-				ptr := int(uint32(frame.Locals[0])) + 8
+				ptr := int(frame.Locals[0]) + 8
 				v := r.loadValue(vm, ptr)
 				r.storeValue(vm, ptr+8, v)
 				if s, ok := v.v.(string); ok {
@@ -143,7 +143,7 @@ func (r *Resolver) ResolveFunc(module, field string) exec.FunctionImport {
 		case "syscall/js.valueLoadString":
 			return func(vm *exec.VirtualMachine) int64 {
 				frame := vm.GetCurrentFrame()
-				ptr := int(uint32(frame.Locals[0])) + 8
+				ptr := int(frame.Locals[0]) + 8
 				v := r.loadValue(vm, ptr)
 				if s, ok := v.v.(string); ok {
 					copy(r.loadSlice(vm, ptr+8), []byte(s))
@@ -157,24 +157,30 @@ func (r *Resolver) ResolveFunc(module, field string) exec.FunctionImport {
 		case "syscall/js.valueCall":
 			return func(vm *exec.VirtualMachine) int64 {
 				frame := vm.GetCurrentFrame()
-				ptr := int(uint32(frame.Locals[0])) + 8
+				ptr := int(frame.Locals[0]) + 8
 				v := r.loadValue(vm, ptr)
 				s := r.loadString(vm, ptr+8)
 				args := r.loadSliceOfValues(vm, ptr+24)
 
+				ptr = ptr+48
 				if c, ok := v.v.(caller); ok {
-					r.storeValue(vm, ptr+56, c.Call(s, args...))
-					vm.Memory[ptr+64] = 1
+					ret := c.Call(s, args...)
+					r.storeValue(vm, ptr, ret)
+					if _, ok := ret.(jsError); ok {
+						vm.Memory[ptr+8] = 0
+					} else {
+						vm.Memory[ptr+8] = 1
+					}
 				} else {
-					r.storeValue(vm, ptr+56, newJSError(fmt.Sprintf("value %#v is not caller", v)))
-					vm.Memory[ptr+64] = 0
+					r.storeValue(vm, ptr, newJSError(fmt.Errorf("value %#v is not caller", v)))
+					vm.Memory[ptr+8] = 0
 				}
 				return 0
 			}
 		case "syscall/js.stringVal":
 			return func(vm *exec.VirtualMachine) int64 {
 				frame := vm.GetCurrentFrame()
-				ptr := int(uint32(frame.Locals[0])) + 8
+				ptr := int(frame.Locals[0]) + 8
 				s := r.loadString(vm, ptr)
 				r.storeValue(vm, ptr+16, s)
 				return 0
@@ -221,16 +227,22 @@ func (r *Resolver) loadValue(vm *exec.VirtualMachine, ptr int) Value {
 	return v
 }
 
-func (r *Resolver) loadSliceOfValues(vm *exec.VirtualMachine, ptr int) []interface{} {
+func (r *Resolver) loadSliceOfValues(vm *exec.VirtualMachine, ptr int) []Value {
 	base := binary.LittleEndian.Uint64(vm.Memory[ptr:])
 	len := binary.LittleEndian.Uint64(vm.Memory[ptr+8:])
 
-	slice := make([]interface{}, len)
+	slice := make([]Value, len)
 	for i := uint64(0); i < len; i++ {
 		slice[i] = r.loadValue(vm, int(base+i*8))
 	}
 	return slice
 }
+
+const (
+	typeFlagString   = 1
+	typeFlagSymbol   = 2
+	typeFlagFunction = 3
+)
 
 func (r *Resolver) storeValue(vm *exec.VirtualMachine, ptr int, v interface{}) {
 	if v == nil {
@@ -238,14 +250,17 @@ func (r *Resolver) storeValue(vm *exec.VirtualMachine, ptr int, v interface{}) {
 		return
 	}
 
-	var ref ref
 	switch tv := v.(type) {
+	case int:
+		binary.LittleEndian.PutUint64(vm.Memory[ptr:], math.Float64bits(float64(tv)))
+		return
 	case float64:
 		if math.IsNaN(tv) {
 			binary.LittleEndian.PutUint64(vm.Memory[ptr:], valueNaN.RefUint64())
 			return
 		}
 		binary.LittleEndian.PutUint64(vm.Memory[ptr:], math.Float64bits(tv))
+		return
 	case bool:
 		if tv {
 			binary.LittleEndian.PutUint64(vm.Memory[ptr:], valueTrue.RefUint64())
@@ -254,45 +269,23 @@ func (r *Resolver) storeValue(vm *exec.VirtualMachine, ptr int, v interface{}) {
 		}
 		return
 	case Value:
-		if tv.ref>>32&nanHead == nanHead {
-			binary.LittleEndian.PutUint64(vm.Memory[ptr:], tv.RefUint64())
-			return
-		}
-		value := reflect.ValueOf(tv.v)
-		k := value.Kind()
-		switch k {
-		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-			binary.LittleEndian.PutUint64(vm.Memory[ptr:], uint64(value.Int()))
-		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-			binary.LittleEndian.PutUint64(vm.Memory[ptr:], value.Uint())
-		case reflect.Float32, reflect.Float64:
-			binary.LittleEndian.PutUint64(vm.Memory[ptr:], math.Float64bits(value.Float()))
-		default:
-			binary.LittleEndian.PutUint64(vm.Memory[ptr:], tv.RefUint64())
-		}
+		binary.LittleEndian.PutUint64(vm.Memory[ptr:], tv.RefUint64())
 		return
 	default:
-		ref = r.valueIndex
-		r.values[ref] = makeValue(ref, tv)
+		var tf uint32
+		switch reflect.TypeOf(v).Kind() {
+		case reflect.String:
+			tf = typeFlagString
+		case reflect.Func:
+			tf = typeFlagFunction
+		}
+
+		nr := ref(nanHead|tf)<<32|r.valueIndex
+		binary.LittleEndian.PutUint64(vm.Memory[ptr:], uint64(nr))
+
+		r.values[r.valueIndex] = makeValue(nr, tv)
 		r.valueIndex++
 	}
-
-	const (
-		typeFlagString   = 1
-		typeFlagSymbol   = 2
-		typeFlagFunction = 3
-	)
-
-	var tf uint32
-	switch reflect.TypeOf(v).Kind() {
-	case reflect.String:
-		tf = typeFlagString
-	case reflect.Func:
-		tf = typeFlagFunction
-	}
-
-	binary.LittleEndian.PutUint32(vm.Memory[ptr+4:], nanHead|tf)
-	binary.LittleEndian.PutUint32(vm.Memory[ptr:], uint32(ref))
 }
 
 func (r *Resolver) ResolveGlobal(module, field string) int64 {
