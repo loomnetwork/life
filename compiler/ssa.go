@@ -149,7 +149,7 @@ func (c *SSAFunctionCompiler) Compile(importTypeIDs []int) {
 
 	unreachableDepth := 0
 
-	for _, ins := range c.Source.Code {
+	for i, ins := range c.Source.Code {
 		//fmt.Printf("%s %d\n", ins.Op.Name, len(c.Stack))
 		wasUnreachable := false
 
@@ -400,10 +400,17 @@ func (c *SSAFunctionCompiler) Compile(importTypeIDs []int) {
 			unreachableDepth = 1
 
 		case "return":
+			last := i == len(c.Source.Code)-1
+			if last {
+				c.FixupLocationRef(c.Locations[0], false)
+			}
 			if len(c.Stack) != 0 {
 				c.Code = append(c.Code, buildInstr(0, "return", nil, c.PopStack(1)))
 			} else {
 				c.Code = append(c.Code, buildInstr(0, "return", nil, nil))
+			}
+			if last {
+				return
 			}
 			unreachableDepth = 1
 
