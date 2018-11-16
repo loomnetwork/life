@@ -2,6 +2,9 @@
 
 Golang WebAssembly VM. WebAssembly program written in golang can be run by this VM.
 
+Implemented Golang Webassembly JS Runtime for the Webassembly VM written by Golang.  
+So the VM can run the wasm files built by Golang, instead of only the wasm files built by C/C++ or Rust.
+
 ## Getting Started
 
 ### Build the test wasm if you want
