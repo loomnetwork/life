@@ -1,9 +1,8 @@
 package gowasm
 
 import (
-	"encoding/binary"
 	"github.com/perlin-network/life/exec"
-	"math"
+	"unsafe"
 )
 
 type jsInt8Array []int8
@@ -22,12 +21,10 @@ func (a jsInt8Array) New(vm *exec.VirtualMachine, args ...Value) interface{} {
 	}
 
 	if m.ref == memory.ref {
-		r := make(jsInt8Array, n.Int())
-		s := s.Int()
-		for i := range r {
-			r[i] = int8(vm.Memory[s+i])
-		}
+		us := vm.Memory[s.Int() : s.Int()+n.Int()]
+		r := *((*jsInt8Array)(unsafe.Pointer(&us)))
 		return r
+
 	}
 	panic("jsInt8Array New invalid args")
 }
@@ -48,11 +45,8 @@ func (a jsInt16Array) New(vm *exec.VirtualMachine, args ...Value) interface{} {
 	}
 
 	if m.ref == memory.ref {
-		r := make(jsInt16Array, n.Int())
-		s := s.Int()
-		for i := range r {
-			r[i] = int16(binary.LittleEndian.Uint16(vm.Memory[s+i*2:]))
-		}
+		us := vm.Memory[s.Int() : s.Int()+n.Int()*2]
+		r := *((*jsInt16Array)(unsafe.Pointer(&us)))
 		return r
 	}
 	panic("jsInt16Array New invalid args")
@@ -74,11 +68,8 @@ func (a jsInt32Array) New(vm *exec.VirtualMachine, args ...Value) interface{} {
 	}
 
 	if m.ref == memory.ref {
-		r := make(jsInt32Array, n.Int())
-		s := s.Int()
-		for i := range r {
-			r[i] = int32(binary.LittleEndian.Uint16(vm.Memory[s+i*4:]))
-		}
+		us := vm.Memory[s.Int() : s.Int()+n.Int()*4]
+		r := *((*jsInt32Array)(unsafe.Pointer(&us)))
 		return r
 	}
 	panic("jsInt32Array New invalid args")
@@ -100,8 +91,7 @@ func (a jsUint8Array) New(vm *exec.VirtualMachine, args ...Value) interface{} {
 	}
 
 	if m.ref == memory.ref {
-		r := make(jsUint8Array, n.Int())
-		copy(r, vm.Memory[s.Int():])
+		var r jsUint8Array = vm.Memory[s.Int() : s.Int()+n.Int()]
 		return r
 	}
 	panic("jsUint8Array New invalid args")
@@ -123,11 +113,8 @@ func (a jsUint16Array) New(vm *exec.VirtualMachine, args ...Value) interface{} {
 	}
 
 	if m.ref == memory.ref {
-		r := make(jsUint16Array, n.Int())
-		s := s.Int()
-		for i := range r {
-			r[i] = binary.LittleEndian.Uint16(vm.Memory[s+i*2:])
-		}
+		us := vm.Memory[s.Int() : s.Int()+n.Int()*2]
+		r := *((*jsUint16Array)(unsafe.Pointer(&us)))
 		return r
 	}
 	panic("jsUint16Array New invalid args")
@@ -149,11 +136,8 @@ func (a jsUint32Array) New(vm *exec.VirtualMachine, args ...Value) interface{} {
 	}
 
 	if m.ref == memory.ref {
-		r := make(jsUint32Array, n.Int())
-		s := s.Int()
-		for i := range r {
-			r[i] = binary.LittleEndian.Uint32(vm.Memory[s+i*4:])
-		}
+		us := vm.Memory[s.Int() : s.Int()+n.Int()*4]
+		r := *((*jsUint32Array)(unsafe.Pointer(&us)))
 		return r
 	}
 	panic("jsUint32Array New invalid args")
@@ -175,11 +159,8 @@ func (a jsFloat32Array) New(vm *exec.VirtualMachine, args ...Value) interface{} 
 	}
 
 	if m.ref == memory.ref {
-		r := make(jsFloat32Array, n.Int())
-		s := s.Int()
-		for i := range r {
-			r[i] = math.Float32frombits(binary.LittleEndian.Uint32(vm.Memory[s+i*4:]))
-		}
+		us := vm.Memory[s.Int() : s.Int()+n.Int()*4]
+		r := *((*jsFloat32Array)(unsafe.Pointer(&us)))
 		return r
 	}
 	panic("jsFloat32Array New invalid args")
@@ -201,11 +182,8 @@ func (a jsFloat64Array) New(vm *exec.VirtualMachine, args ...Value) interface{} 
 	}
 
 	if m.ref == memory.ref {
-		r := make(jsFloat64Array, n.Int())
-		s := s.Int()
-		for i := range r {
-			r[i] = math.Float64frombits(binary.LittleEndian.Uint64(vm.Memory[s+i*8:]))
-		}
+		us := vm.Memory[s.Int() : s.Int()+n.Int()*8]
+		r := *((*jsFloat64Array)(unsafe.Pointer(&us)))
 		return r
 	}
 	panic("jsFloat64Array New invalid args")
