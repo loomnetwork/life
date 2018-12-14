@@ -14,7 +14,8 @@ import (
 )
 
 type Resolver struct {
-	origin time.Time
+	StandAlone bool
+	origin     time.Time
 
 	values     map[ref]Value
 	valueIndex ref
@@ -22,10 +23,15 @@ type Resolver struct {
 
 func NewResolver() *Resolver {
 	return &Resolver{
+		StandAlone: true,
 		origin:     time.Now(),
 		values:     defaultValues,
 		valueIndex: ref(len(defaultValues)),
 	}
+}
+
+func (r *Resolver) SetGlobalValue(key string, value JSObject) {
+	r.values[valueGlobal.RefLower32Bits()].v.(JSObject)[key] = value
 }
 
 func (r *Resolver) ResolveFunc(module, field string) exec.FunctionImport {
@@ -64,6 +70,9 @@ func (r *Resolver) ResolveFunc(module, field string) exec.FunctionImport {
 			}
 		case "runtime.wasmExit":
 			return func(vm *exec.VirtualMachine) int64 {
+				if !r.StandAlone {
+					return 0
+				}
 				frame := vm.GetCurrentFrame()
 				ptr := int(frame.Locals[0]) + 8
 				code := binary.LittleEndian.Uint32(vm.Memory[ptr:])
@@ -107,6 +116,57 @@ func (r *Resolver) ResolveFunc(module, field string) exec.FunctionImport {
 					r.storeValue(vm, ptr+24, gt.Get(s))
 				}
 
+				return 0
+			}
+		case "syscall/js.valueLength":
+			return func(vm *exec.VirtualMachine) int64 {
+				frame := vm.GetCurrentFrame()
+				ptr := int(frame.Locals[0]) + 8
+
+				v := r.loadValue(vm, ptr)
+				switch value := v.v.(type) {
+				case []interface{}:
+					binary.LittleEndian.PutUint64(vm.Memory[ptr+8:], uint64(len(value)))
+				case lengthGetter:
+					binary.LittleEndian.PutUint64(vm.Memory[ptr+8:], uint64(value.Length()))
+				default:
+					fmt.Printf("syscall/js.valueLength error on %#v\n", v)
+				}
+				return 0
+			}
+		case "syscall/js.valueIndex":
+			return func(vm *exec.VirtualMachine) int64 {
+				frame := vm.GetCurrentFrame()
+				ptr := int(frame.Locals[0]) + 8
+
+				v := r.loadValue(vm, ptr)
+				i := int64(binary.LittleEndian.Uint64(vm.Memory[ptr+8:]))
+				switch value := v.v.(type) {
+				case []interface{}:
+					r.storeValue(vm, ptr+16, value[i])
+				case indexGetter:
+					r.storeValue(vm, ptr+16, value.Get(i))
+				default:
+					fmt.Printf("syscall/js.valueIndex error on %#v\n", v)
+				}
+				return 0
+			}
+		case "syscall/js.valueSetIndex":
+			return func(vm *exec.VirtualMachine) int64 {
+				frame := vm.GetCurrentFrame()
+				ptr := int(frame.Locals[0]) + 8
+
+				v := r.loadValue(vm, ptr)
+				i := int64(binary.LittleEndian.Uint64(vm.Memory[ptr+8:]))
+				x := r.loadValue(vm, ptr+16)
+				switch value := v.v.(type) {
+				case []interface{}:
+					value[i] = x
+				case indexSetter:
+					value.Set(i, x)
+				default:
+					fmt.Printf("syscall/js.valueSetIndex error on %#v\n", v)
+				}
 				return 0
 			}
 		case "syscall/js.valueNew":
@@ -162,7 +222,7 @@ func (r *Resolver) ResolveFunc(module, field string) exec.FunctionImport {
 				s := r.loadString(vm, ptr+8)
 				args := r.loadSliceOfValues(vm, ptr+24)
 
-				ptr = ptr+48
+				ptr = ptr + 48
 				if c, ok := v.v.(caller); ok {
 					ret := c.Call(s, args...)
 					r.storeValue(vm, ptr, ret)
@@ -172,7 +232,7 @@ func (r *Resolver) ResolveFunc(module, field string) exec.FunctionImport {
 						vm.Memory[ptr+8] = 1
 					}
 				} else {
-					r.storeValue(vm, ptr, newJSError(fmt.Errorf("value %#v is not caller", v)))
+					r.storeValue(vm, ptr, NewJSError(fmt.Errorf("value %#v is not caller", v)))
 					vm.Memory[ptr+8] = 0
 				}
 				return 0
@@ -220,6 +280,7 @@ func (r *Resolver) loadValue(vm *exec.VirtualMachine, ptr int) Value {
 	}
 
 	k := ref(u).Lower32Bits()
+
 	v, ok := r.values[k]
 	if !ok {
 		return valueNaN
@@ -251,7 +312,13 @@ func (r *Resolver) storeValue(vm *exec.VirtualMachine, ptr int, v interface{}) {
 	}
 
 	switch tv := v.(type) {
+	case byte:
+		binary.LittleEndian.PutUint64(vm.Memory[ptr:], math.Float64bits(float64(tv)))
+		return
 	case int:
+		binary.LittleEndian.PutUint64(vm.Memory[ptr:], math.Float64bits(float64(tv)))
+		return
+	case int64:
 		binary.LittleEndian.PutUint64(vm.Memory[ptr:], math.Float64bits(float64(tv)))
 		return
 	case float64:
@@ -280,7 +347,7 @@ func (r *Resolver) storeValue(vm *exec.VirtualMachine, ptr int, v interface{}) {
 			tf = typeFlagFunction
 		}
 
-		nr := ref(nanHead|tf)<<32|r.valueIndex
+		nr := ref(nanHead|tf)<<32 | r.valueIndex
 		binary.LittleEndian.PutUint64(vm.Memory[ptr:], uint64(nr))
 
 		r.values[r.valueIndex] = makeValue(nr, tv)
