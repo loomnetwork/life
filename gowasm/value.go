@@ -9,6 +9,18 @@ type getter interface {
 	Get(v string) interface{}
 }
 
+type indexSetter interface {
+	Set(index int64, x Value)
+}
+
+type indexGetter interface {
+	Get(index int64) interface{}
+}
+
+type lengthGetter interface {
+	Length() int
+}
+
 type newer interface {
 	New(vm *exec.VirtualMachine, args ...Value) interface{}
 }
@@ -76,6 +88,21 @@ func (v Value) Int() int {
 
 func (v Value) Uint32() uint32 {
 	return uint32(v.float())
+}
+
+func (v Value) Interface() interface{} {
+	return v.v
+}
+
+func (v Value) Bytes() []byte {
+	if vs, ok := v.v.(JSArray); ok {
+		bs := make([]byte, len(vs))
+		for i, v := range vs {
+			bs[i] = byte(v.(Value).Int())
+		}
+		return bs
+	}
+	panic("Value is not js.Array")
 }
 
 type Type int

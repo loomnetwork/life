@@ -7,6 +7,10 @@ import (
 )
 
 func RunWASMFile(path string, entry string) (ret int64, err error) {
+	return RunWASMFileWithResolver(NewResolver(), path, entry)
+}
+
+func RunWASMFileWithResolver(resolver *Resolver, path string, entry string) (ret int64, err error) {
 	if len(entry) < 1 {
 		entry = "run"
 	}
@@ -22,7 +26,7 @@ func RunWASMFile(path string, entry string) (ret int64, err error) {
 		EnableJIT:          false,
 		DefaultMemoryPages: 128,
 		DefaultTableSize:   65536,
-	}, NewResolver(), nil)
+	}, resolver, nil)
 
 	if err != nil {
 		return
