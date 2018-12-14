@@ -189,12 +189,40 @@ func (a jsFloat64Array) New(vm *exec.VirtualMachine, args ...Value) interface{} 
 	panic("jsFloat64Array New invalid args")
 }
 
-type jsArray []interface{}
+type JSArray []interface{}
 
-func (a jsArray) New(vm *exec.VirtualMachine, args ...Value) interface{} {
-	result := make(jsArray, len(args))
-	for i, value := range args {
-		result[i] = value.v
+func (a JSArray) Length() int {
+	return len(a)
+}
+
+func (a JSArray) Get(index int64) interface{} {
+	if len(a) <= int(index) {
+		panic("JSArray: index out of range")
 	}
+
+	return a[index]
+}
+
+func (a JSArray) New(vm *exec.VirtualMachine, args ...Value) interface{} {
+	if len(args) < 1 {
+		return nil
+	}
+	result := make(JSArray, args[0].Int())
 	return result
+}
+
+func (a JSArray) Set(index int64, x Value) {
+	if len(a) <= int(index) {
+		return
+	}
+
+	a[index] = x
+}
+
+func ByteSlice2JSArray(data []byte) JSArray {
+	is := make(JSArray, len(data))
+	for i, d := range data {
+		is[i] = d
+	}
+	return is
 }
