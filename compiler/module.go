@@ -3,10 +3,12 @@ package compiler
 import (
 	"bytes"
 	"encoding/binary"
-	//"fmt"
+	"runtime"
+
+	// "fmt"
 	"github.com/go-interpreter/wagon/disasm"
 	"github.com/go-interpreter/wagon/wasm"
-	//"github.com/go-interpreter/wagon/validate"
+	// "github.com/go-interpreter/wagon/validate"
 	"github.com/go-interpreter/wagon/wasm/leb128"
 	"github.com/perlin-network/life/compiler/opcodes"
 	"github.com/perlin-network/life/utils"
@@ -91,12 +93,12 @@ func LoadModule(raw []byte) (*Module, error) {
 								panic("len mismatch")
 							}
 							functionNames[int(index)] = string(name)
-							//fmt.Printf("%d -> %s\n", int(index), string(name))
+							// fmt.Printf("%d -> %s\n", int(index), string(name))
 						}
 					}
 				}
 			}
-			//fmt.Printf("%d function names written\n", len(functionNames))
+			// fmt.Printf("%d function names written\n", len(functionNames))
 		}
 	}
 
@@ -121,7 +123,7 @@ func (m *Module) CompileForInterpreter(gp GasPolicy) (_retCode []InterpreterCode
 			tyID := e.Type.(wasm.FuncImport).Type
 			ty := &m.Base.Types.Entries[int(tyID)]
 
-			buf := &bytes.Buffer{}
+			buf := bytes.NewBuffer(make([]byte, 0, 14))
 
 			binary.Write(buf, binary.LittleEndian, uint32(1)) // value ID
 			binary.Write(buf, binary.LittleEndian, opcodes.InvokeImport)
@@ -149,10 +151,23 @@ func (m *Module) CompileForInterpreter(gp GasPolicy) (_retCode []InterpreterCode
 	}
 
 	numFuncImports := len(ret)
-	ret = append(ret, make([]InterpreterCode, len(m.Base.FunctionIndexSpace))...)
+	funcIndexSpaceLen := len(m.Base.FunctionIndexSpace)
+	ret = append(ret, make([]InterpreterCode, funcIndexSpaceLen)...)
 
-	for i, f := range m.Base.FunctionIndexSpace {
-		//fmt.Printf("Compiling function %d (%+v) with %d locals\n", i, f.Sig, len(f.Body.Locals))
+	type icResult struct {
+		i  int
+		ic InterpreterCode
+	}
+
+	type job struct {
+		i int
+		f wasm.Function
+	}
+
+	n := runtime.NumCPU()
+	rchan := make(chan icResult, funcIndexSpaceLen)
+	jobFn := func(i int, f wasm.Function) {
+		// fmt.Printf("Compiling function %d (%+v) with %d locals\n", i, f.Sig, len(f.Body.Locals))
 		d, err := disasm.Disassemble(f, m.Base)
 		if err != nil {
 			panic(err)
@@ -166,21 +181,45 @@ func (m *Module) CompileForInterpreter(gp GasPolicy) (_retCode []InterpreterCode
 		if gp != nil {
 			compiler.InsertGasCounters(gp)
 		}
-		//fmt.Println(compiler.Code)
-		//fmt.Printf("%+v\n", compiler.NewCFGraph())
+		// fmt.Println(compiler.Code)
+		// fmt.Printf("%+v\n", compiler.NewCFGraph())
 		numRegs := compiler.RegAlloc()
-		//fmt.Println(compiler.Code)
+		// fmt.Println(compiler.Code)
 		numLocals := 0
 		for _, v := range f.Body.Locals {
 			numLocals += int(v.Count)
 		}
-		ret[numFuncImports+i] = InterpreterCode{
-			NumRegs:    numRegs,
-			NumParams:  len(f.Sig.ParamTypes),
-			NumLocals:  numLocals,
-			NumReturns: len(f.Sig.ReturnTypes),
-			Bytes:      compiler.Serialize(),
+		rchan <- icResult{
+			i: i,
+			ic: InterpreterCode{
+				NumRegs:    numRegs,
+				NumParams:  len(f.Sig.ParamTypes),
+				NumLocals:  numLocals,
+				NumReturns: len(f.Sig.ReturnTypes),
+				Bytes:      compiler.Serialize(),
+			},
 		}
+	}
+
+	jobChan := make(chan job, funcIndexSpaceLen)
+	for g := 0; g < n; g++ {
+		go func() {
+			for job := range jobChan {
+				jobFn(job.i, job.f)
+			}
+		}()
+	}
+
+	go func() {
+		for i, f := range m.Base.FunctionIndexSpace {
+			jobChan <- job{i, f}
+		}
+		close(jobChan)
+	}()
+
+	for i := 0; i < funcIndexSpaceLen; i++ {
+		r := <-rchan
+		ret[numFuncImports+r.i] = r.ic
 	}
 
 	return ret, nil

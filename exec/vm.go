@@ -50,6 +50,9 @@ type VirtualMachine struct {
 	ReturnValue      int64
 	Gas              uint64
 	GasLimitExceeded bool
+
+	initGlobals []int64
+	resolver    ImportResolver
 }
 
 // VMConfig denotes a set of options passed to a single VirtualMachine insta.ce
@@ -82,6 +85,8 @@ type Frame struct {
 type ImportResolver interface {
 	ResolveFunc(module, field string) FunctionImport
 	ResolveGlobal(module, field string) int64
+	Clone() ImportResolver
+	Reset()
 }
 
 // NewVirtualMachine instantiates a virtual machine for a given WebAssembly module, with
@@ -109,11 +114,15 @@ func NewVirtualMachine(
 		return nil, err
 	}
 
+	return newVirtualMachine(config, impResolver, m, functionCode)
+}
+
+func newVirtualMachine(config VMConfig, impResolver ImportResolver, m *compiler.Module, functionCode []compiler.InterpreterCode) (vm *VirtualMachine, retErr error) {
 	defer utils.CatchPanic(&retErr)
 
-	table := make([]uint32, 0)
-	globals := make([]int64, 0)
-	funcImports := make([]FunctionImport, 0)
+	var table []uint32
+	var globals []int64
+	var funcImports []FunctionImport
 
 	if m.Base.Import != nil && impResolver != nil {
 		for _, imp := range m.Base.Import.Entries {
@@ -182,7 +191,7 @@ func NewVirtualMachine(
 	}
 
 	// Load linear memory.
-	memory := make([]byte, 0)
+	var memory []byte
 	if m.Base.Memory != nil && len(m.Base.Memory.Entries) > 0 {
 		initialLimit := int(m.Base.Memory.Entries[0].Limits.Initial)
 		if config.MaxMemoryPages != 0 && initialLimit > config.MaxMemoryPages {
@@ -193,9 +202,6 @@ func NewVirtualMachine(
 
 		// Initialize empty memory.
 		memory = make([]byte, capacity)
-		for i := 0; i < capacity; i++ {
-			memory[i] = 0
-		}
 
 		if m.Base.Data != nil && len(m.Base.Data.Entries) > 0 {
 			for _, e := range m.Base.Data.Entries {
@@ -205,6 +211,8 @@ func NewVirtualMachine(
 		}
 	}
 
+	cloneGlobals := make([]int64, len(globals))
+	copy(cloneGlobals, globals)
 	return &VirtualMachine{
 		Module:          m,
 		Config:          config,
@@ -216,7 +224,60 @@ func NewVirtualMachine(
 		Globals:         globals,
 		Memory:          memory,
 		Exited:          true,
+
+		initGlobals: cloneGlobals,
+		resolver:    impResolver,
 	}, nil
+}
+
+func (vm *VirtualMachine) Clone() (*VirtualMachine, error) {
+	return newVirtualMachine(vm.Config, vm.resolver.Clone(), vm.Module, vm.FunctionCode)
+}
+
+func (vm *VirtualMachine) Reset() {
+	m := vm.Module
+	config := vm.Config
+	memory := vm.Memory
+	globals := make([]int64, len(vm.initGlobals))
+	copy(globals, vm.initGlobals)
+
+	if m.Base.Memory != nil && len(m.Base.Memory.Entries) > 0 {
+		initialLimit := int(m.Base.Memory.Entries[0].Limits.Initial)
+		if config.MaxMemoryPages != 0 && initialLimit > config.MaxMemoryPages {
+			panic("max memory exceeded")
+		}
+
+		for i := 0; i < len(memory); i++ {
+			memory[i] = 0
+		}
+
+		capacity := initialLimit * DefaultPageSize
+		memory = memory[:capacity]
+
+		if m.Base.Data != nil && len(m.Base.Data.Entries) > 0 {
+			for _, e := range m.Base.Data.Entries {
+				offset := int(execInitExpr(e.Offset, globals))
+				copy(memory[int(offset):], e.Data)
+			}
+		}
+	}
+
+	*vm = VirtualMachine{
+		Module:          m,
+		Config:          config,
+		FunctionCode:    vm.FunctionCode,
+		FunctionImports: vm.FunctionImports,
+		CallStack:       vm.CallStack,
+		CurrentFrame:    -1,
+		Table:           vm.Table,
+		Globals:         globals,
+		Memory:          memory,
+		Exited:          true,
+
+		initGlobals: vm.initGlobals,
+		resolver:    vm.resolver,
+	}
+	vm.resolver.Reset()
 }
 
 // Init initializes a frame. Must be called on `call` and `call_indirect`.
@@ -236,7 +297,7 @@ func (f *Frame) Init(vm *VirtualMachine, functionID int, code compiler.Interpret
 	f.IP = 0
 	f.Continuation = 0
 
-	//fmt.Printf("Enter function %d (%s)\n", functionID, vm.Module.FunctionNames[functionID])
+	// fmt.Printf("Enter function %d (%s)\n", functionID, vm.Module.FunctionNames[functionID])
 }
 
 // Destroy destroys a frame. Must be called on return.
@@ -244,7 +305,7 @@ func (f *Frame) Destroy(vm *VirtualMachine) {
 	numValueSlots := len(f.Regs) + len(f.Locals)
 	vm.NumValueSlots -= numValueSlots
 
-	//fmt.Printf("Leave function %d (%s)\n", f.FunctionID, vm.Module.FunctionNames[f.FunctionID])
+	// fmt.Printf("Leave function %d (%s)\n", f.FunctionID, vm.Module.FunctionNames[f.FunctionID])
 }
 
 // GetCurrentFrame returns the current frame.
@@ -255,7 +316,7 @@ func (vm *VirtualMachine) GetCurrentFrame() *Frame {
 
 	if vm.CurrentFrame >= len(vm.CallStack) {
 		panic("call stack overflow")
-		//vm.CallStack = append(vm.CallStack, make([]Frame, DefaultCallStackSize / 2)...)
+		// vm.CallStack = append(vm.CallStack, make([]Frame, DefaultCallStackSize / 2)...)
 	}
 	return &vm.CallStack[vm.CurrentFrame]
 }
@@ -374,7 +435,7 @@ func (vm *VirtualMachine) Execute() {
 		ins := opcodes.Opcode(frame.Code[frame.IP+4])
 		frame.IP += 5
 
-		//fmt.Printf("INS: [%d] %s\n", valueID, ins.String())
+		// fmt.Printf("INS: [%d] %s\n", valueID, ins.String())
 
 		switch ins {
 		case opcodes.Nop:
@@ -1327,7 +1388,7 @@ func (vm *VirtualMachine) Execute() {
 			} else {
 				frame = vm.GetCurrentFrame()
 				frame.Regs[frame.ReturnReg] = val
-				//fmt.Printf("Return value %d\n", val)
+				// fmt.Printf("Return value %d\n", val)
 			}
 		case opcodes.ReturnVoid:
 			frame.Destroy(vm)
@@ -1344,13 +1405,13 @@ func (vm *VirtualMachine) Execute() {
 			val := frame.Locals[id]
 			frame.IP += 4
 			frame.Regs[valueID] = val
-			//fmt.Printf("GetLocal %d = %d\n", id, val)
+			// fmt.Printf("GetLocal %d = %d\n", id, val)
 		case opcodes.SetLocal:
 			id := int(LE.Uint32(frame.Code[frame.IP : frame.IP+4]))
 			val := frame.Regs[int(LE.Uint32(frame.Code[frame.IP+4:frame.IP+8]))]
 			frame.IP += 8
 			frame.Locals[id] = val
-			//fmt.Printf("SetLocal %d = %d\n", id, val)
+			// fmt.Printf("SetLocal %d = %d\n", id, val)
 		case opcodes.GetGlobal:
 			frame.Regs[valueID] = vm.Globals[int(LE.Uint32(frame.Code[frame.IP:frame.IP+4]))]
 			frame.IP += 4
@@ -1377,7 +1438,7 @@ func (vm *VirtualMachine) Execute() {
 			for i := 0; i < argCount; i++ {
 				frame.Locals[i] = oldRegs[int(LE.Uint32(argsRaw[i*4:i*4+4]))]
 			}
-			//fmt.Println("Call params =", frame.Locals[:argCount])
+			// fmt.Println("Call params =", frame.Locals[:argCount])
 
 		case opcodes.CallIndirect:
 			typeID := int(LE.Uint32(frame.Code[frame.IP : frame.IP+4]))

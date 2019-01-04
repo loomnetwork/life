@@ -1,4 +1,4 @@
-package life
+package main
 
 import (
 	"flag"
@@ -11,6 +11,14 @@ import (
 // Resolver defines imports for WebAssembly modules ran in Life.
 type Resolver struct {
 	tempRet0 int64
+}
+
+func (r *Resolver) Clone() exec.ImportResolver {
+	panic("implement me")
+}
+
+func (r *Resolver) Reset() {
+	panic("implement me")
 }
 
 // ResolveFunc defines a set of import functions that may be called within a WebAssembly module.

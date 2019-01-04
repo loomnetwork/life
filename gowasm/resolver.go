@@ -25,7 +25,29 @@ func NewResolver() *Resolver {
 	return &Resolver{
 		StandAlone: true,
 		origin:     time.Now(),
-		values:     defaultValues,
+		values:     cloneDefaultValues(),
+		valueIndex: ref(len(defaultValues)),
+	}
+}
+
+func cloneDefaultValues() (clone map[ref]Value) {
+	clone = make(map[ref]Value, len(defaultValues))
+	for key, value := range defaultValues {
+		clone[key] = value
+	}
+	return
+}
+
+func (r *Resolver) Reset() {
+	r.values = cloneDefaultValues()
+	r.valueIndex = ref(len(defaultValues))
+}
+
+func (r *Resolver) Clone() exec.ImportResolver {
+	return &Resolver{
+		StandAlone: r.StandAlone,
+		origin:     time.Now(),
+		values:     cloneDefaultValues(),
 		valueIndex: ref(len(defaultValues)),
 	}
 }
